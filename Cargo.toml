@@ -1,0 +1,26 @@
+[package]
+name = "mdformat"
+version = "0.1.0"
+edition = "2024"
+authors = ["James Hu <huleiak47@gmail.com>"]
+license = "MIT"
+description = "A formatter for markdown source code."
+repository = "https://github.com/huleiak47/mdformat"
+keywords = ["markdown", "formatter"]
+rust-version = "1.85"
+categories = ["command-line-utilities"]
+
+
+[dependencies]
+clap = { version = "4.5.31", features = ["derive"] }
+lazy_static = "1.5"
+unicode-script = "0.5"
+fancy-regex = "0.14"
+markdown-table-formatter = "0.3"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.11"
+
+
+[profile.release]
+strip = true
