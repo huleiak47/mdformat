@@ -176,6 +176,9 @@ fn format_line(line: &str) -> String {
 
 fn format_text(text: &str) -> String {
     let mut text = add_spaces_between_cjk_ascii(text);
+    // sometimes we need to perform this twice to make it stable
+    text = add_spaces_between_cjk_ascii(&text);
+
     text = add_space_around_code_spans(&text);
     // sometimes we need to perform this twice to make it stable
     text = add_space_around_code_spans(&text);
@@ -251,10 +254,10 @@ mod tests {
 
     #[test]
     fn test_insert_space() {
-        let fmt_md = format_markdown("# 123你好hello`你好call function()`$text谢谢$谢谢");
+        let fmt_md = format_markdown("# 123你好2谢谢hello`你好call function()`$text谢谢$谢谢");
         assert_eq!(
             fmt_md,
-            "# 123 你好 hello `你好 call function()` $text 谢谢$谢谢\n"
+            "# 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
         );
     }
 
