@@ -85,7 +85,7 @@ enum LineState {
     CodeEnd,
     Code,
     Empty,
-    Header,
+    Title,
 }
 
 fn get_line_state(line: &str, prev_state: LineState) -> LineState {
@@ -104,7 +104,7 @@ fn get_line_state(line: &str, prev_state: LineState) -> LineState {
         return LineState::CodeStart;
     }
     if line.starts_with('#') {
-        return LineState::Header;
+        return LineState::Title;
     }
     if line.starts_with('|') {
         return LineState::Table;
@@ -156,7 +156,12 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                     ret.push(String::new());
                 }
             }
-            LineState::Header => {
+            LineState::Title => {
+                // must be an empty line after a table or code block
+                if prev_line_state == LineState::Table || prev_line_state == LineState::CodeEnd {
+                    ret.push(String::new());
+                }
+
                 // header line needs to be formated
                 ret.push(format_line(line));
                 // must be an empty line after a header
@@ -237,8 +242,13 @@ mod tests {
 
     #[test]
     fn test_insert_empty_line_for_title() {
-        let fmt_md = format_markdown("# title 1\n## title2\n### title3");
-        assert_eq!(fmt_md, "# title 1\n\n## title2\n\n### title3\n");
+        let fmt_md = format_markdown(
+            "# title 1\n## title2\n### title3\n\n```c\n#define ABC\n```\n# title4\n| ---- | ---- |\n# title5",
+        );
+        assert_eq!(
+            fmt_md,
+            "# title 1\n\n## title2\n\n### title3\n\n```c\n#define ABC\n```\n\n# title4\n\n| ---- | ---- |\n\n# title5\n"
+        );
     }
 
     #[test]

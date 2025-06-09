@@ -1,6 +1,6 @@
 [package]
 name = "mdformat"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["James Hu <huleiak47@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,6 @@ repository = "https://github.com/huleiak47/mdformat"
 keywords = ["markdown", "formatter"]
 rust-version = "1.85"
 categories = ["command-line-utilities"]
-
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
