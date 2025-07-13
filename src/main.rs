@@ -52,27 +52,27 @@ fn main() -> Result<()> {
 }
 
 fn format_markdown(text: &str) -> String {
-    // string to line vector
-    // remove empty lines at the beginning and end
-    // and remove spaces at the end of each line
+    // Convert string to a vector of lines
+    // Remove empty lines at the beginning and end
+    // And remove spaces at the end of each line
     let lines = text
         .trim()
         .lines()
         .map(|line| line.trim_end())
         .collect::<Vec<_>>();
 
-    // format all lines
+    // Format all lines
     let new_lines = format_lines(lines);
 
-    // format lists
+    // Format lists
     let new_lines = format_lists(&new_lines);
 
     let mut ret = new_lines.join("\n");
 
-    // format tables
+    // Format tables
     ret = format_tables(&ret);
 
-    // end with "\n"
+    // End with "\n"
     if !ret.ends_with('\n') {
         ret.push('\n');
     }
@@ -89,6 +89,7 @@ enum LineState {
     Code,
     Empty,
     Title,
+    List,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -116,6 +117,9 @@ fn get_line_state(line: &str, prev_state: LineState) -> LineState {
     if line.is_empty() {
         return LineState::Empty;
     }
+    if RE_LIST_ITEM.is_match(line).unwrap_or(false) {
+        return LineState::List;
+    }
     if line.starts_with("```") {
         return LineState::CodeStart;
     }
@@ -130,11 +134,11 @@ fn get_line_state(line: &str, prev_state: LineState) -> LineState {
 
 fn format_lines(lines: Vec<&str>) -> Vec<String> {
     let mut ret = vec![];
-    let mut prev_line_state = LineState::Normal;
+    let mut prev_line_state = LineState::Empty;
 
     for line in lines.iter() {
         // insert space between CJK and ASCII
-        let mut cur_state = get_line_state(&line, prev_line_state.clone());
+        let mut cur_state = get_line_state(line, prev_line_state.clone());
         debug!("{:?}: {}", cur_state, line);
 
         match cur_state {
@@ -144,11 +148,11 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                     ret.push(String::new());
                 }
 
-                // normal line needs to be formated
+                // Normal line needs to be formatted
                 ret.push(format_line(line));
             }
             LineState::CodeStart => {
-                // must be an empty line before a code block
+                // Must be an empty line before a code block
                 if prev_line_state != LineState::Empty {
                     ret.push(String::new());
                 }
@@ -158,31 +162,40 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                 ret.push(line.to_string());
             }
             LineState::Table => {
-                // must be an empty line before a table
+                // Must be an empty line before a table
                 if prev_line_state != LineState::Table && prev_line_state != LineState::Empty {
                     ret.push(String::new());
                 }
 
-                // table line needs to be formated
+                // Table line needs to be formatted
                 ret.push(format_line(line));
             }
             LineState::Empty => {
-                // merge consecutive empty lines
+                // Merge consecutive empty lines
                 if prev_line_state != LineState::Empty {
                     ret.push(String::new());
                 }
             }
             LineState::Title => {
-                // must be an empty line after a table or code block
-                if prev_line_state == LineState::Table || prev_line_state == LineState::CodeEnd {
+                // Must be an empty line after a table, list or code block
+                if prev_line_state == LineState::Table
+                    || prev_line_state == LineState::CodeEnd
+                    || prev_line_state == LineState::List
+                {
                     ret.push(String::new());
                 }
 
-                // header line needs to be formated
+                // Header line needs to be formatted
                 ret.push(format_line(line));
-                // must be an empty line after a header
+                // Must be an empty line after a header
                 ret.push(String::new());
                 cur_state = LineState::Empty;
+            }
+            LineState::List => {
+                if prev_line_state != LineState::List && prev_line_state != LineState::Empty {
+                    ret.push(String::new());
+                }
+                ret.push(line.to_string());
             }
         }
 
@@ -208,11 +221,11 @@ fn format_text(text: &str) -> String {
 
 fn format_lists(lines: &[String]) -> Vec<String> {
     lazy_static! {
-        // 正则表达式，用于捕获列表行：
-        // 1: 缩进 (leading spaces)
-        // 2: 无序列表标记 (*, +, -)
-        // 3: 有序列表数字
-        // 4: 列表项内容
+        // Regular expression to capture list lines:
+        // 1: Indentation (leading spaces)
+        // 2: Unordered list marker (*, +, -)
+        // 3: Ordered list number
+        // 4: List item content
         static ref RE_LIST_ITEM: Regex =
             Regex::new(r"^(\s*)(?:([*+-])|(\d+)\.)\s+(.*)").unwrap();
     }
@@ -225,24 +238,24 @@ fn format_lists(lines: &[String]) -> Vec<String> {
             let indent = caps.get(1).unwrap().as_str().len();
             let content = caps.get(4).unwrap().as_str();
 
-            // 判断列表类型
+            // Determine list type
             let current_list_type = if caps.get(2).is_some() {
                 ListType::Unordered
             } else {
                 ListType::Ordered
             };
 
-            // 根据缩进调整列表层级
+            // Adjust list level based on indentation
             while !list_stack.is_empty() && indent < list_stack.last().unwrap().indent {
                 list_stack.pop();
             }
 
             if list_stack.is_empty() || indent > list_stack.last().unwrap().indent {
-                // 进入新的子列表
+                // Enter a new sub-list
                 let new_indent = if list_stack.is_empty() {
                     0
                 } else {
-                    // 新的缩进是基于正则表达式捕获的实际缩进
+                    // New indentation is based on the actual indentation captured by the regex
                     indent
                 };
                 list_stack.push(ListContext {
@@ -251,7 +264,7 @@ fn format_lists(lines: &[String]) -> Vec<String> {
                     counter: 1,
                 });
             } else {
-                // 同级列表项
+                // Same-level list item
                 let last = list_stack.last_mut().unwrap();
                 if last.list_type != current_list_type {
                     // list type changed, treat as a new list
@@ -266,7 +279,7 @@ fn format_lists(lines: &[String]) -> Vec<String> {
                 }
             }
 
-            // 构建新的格式化行
+            // Construct the new formatted line
             let current_context = list_stack.last().unwrap();
             let prefix_indent = " ".repeat(if list_stack.len() > 1 {
                 2 * (list_stack.len() - 1)
@@ -282,7 +295,7 @@ fn format_lists(lines: &[String]) -> Vec<String> {
             };
             result.push(new_line);
         } else {
-            // 非列表行，清空列表状态
+            // Non-list line, clear list state
             list_stack.clear();
             result.push(line.clone());
         }
@@ -292,6 +305,13 @@ fn format_lists(lines: &[String]) -> Vec<String> {
 }
 
 lazy_static! {
+    // Regular expression to capture list lines:
+    // 1: Indentation (leading spaces)
+    // 2: Unordered list marker (*, +, -)
+    // 3: Ordered list number
+    // 4: List item content
+    static ref RE_LIST_ITEM: Regex =
+        Regex::new(r"^(\s*)(?:([*+-])|(\d+)\.)\s+(.*)").unwrap();
     static ref RE_CJK: Regex =
         Regex::new(r"(\p{sc=Han})([a-zA-Z0-9])|([a-zA-Z0-9])(\p{sc=Han})").unwrap();
     static ref RE_CODE_SPAN: Regex = Regex::new(r"([^`\s]?)(`[^`]*`)([^`\s]?)").unwrap();
@@ -337,7 +357,7 @@ mod tests {
         let fmt_md = format_markdown("|a|b|\n|---|---|\n| column 1 | column 2    |");
         assert_eq!(
             fmt_md,
-            "\n| a        | b        |\n| -------- | -------- |\n| column 1 | column 2 |\n"
+            "| a        | b        |\n| -------- | -------- |\n| column 1 | column 2 |\n"
         );
     }
 
@@ -498,5 +518,27 @@ not a list
 1. item 2
 ";
         assert_eq!(format_markdown(input8), expected8);
+
+        // Test case 9: List preceded by a normal line, should insert an empty line
+        let input9 = "This is a normal line.
+* List item 1
+* List item 2";
+        let expected9 = "This is a normal line.
+
+- List item 1
+- List item 2
+";
+        assert_eq!(format_markdown(input9), expected9);
+
+        // Test case 10: List preceded by a title, should have an empty line
+        let input10 = "# My Title
+* List item 1
+* List item 2";
+        let expected10 = "# My Title
+
+- List item 1
+- List item 2
+";
+        assert_eq!(format_markdown(input10), expected10);
     }
 }
