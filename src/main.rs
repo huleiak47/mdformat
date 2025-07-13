@@ -64,6 +64,9 @@ fn format_markdown(text: &str) -> String {
     // format all lines
     let new_lines = format_lines(lines);
 
+    // format lists
+    let new_lines = format_lists(&new_lines);
+
     let mut ret = new_lines.join("\n");
 
     // format tables
@@ -86,6 +89,19 @@ enum LineState {
     Code,
     Empty,
     Title,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum ListType {
+    Unordered,
+    Ordered,
+}
+
+#[derive(Debug, Clone)]
+struct ListContext {
+    list_type: ListType,
+    indent: usize,
+    counter: usize,
 }
 
 fn get_line_state(line: &str, prev_state: LineState) -> LineState {
@@ -188,6 +204,91 @@ fn format_text(text: &str) -> String {
     // sometimes we need to perform this twice to make it stable
     text = add_space_around_code_spans(&text);
     text
+}
+
+fn format_lists(lines: &[String]) -> Vec<String> {
+    lazy_static! {
+        // 正则表达式，用于捕获列表行：
+        // 1: 缩进 (leading spaces)
+        // 2: 无序列表标记 (*, +, -)
+        // 3: 有序列表数字
+        // 4: 列表项内容
+        static ref RE_LIST_ITEM: Regex =
+            Regex::new(r"^(\s*)(?:([*+-])|(\d+)\.)\s+(.*)").unwrap();
+    }
+
+    let mut result = Vec::new();
+    let mut list_stack: Vec<ListContext> = Vec::new();
+
+    for line in lines {
+        if let Some(caps) = RE_LIST_ITEM.captures(line).unwrap() {
+            let indent = caps.get(1).unwrap().as_str().len();
+            let content = caps.get(4).unwrap().as_str();
+
+            // 判断列表类型
+            let current_list_type = if caps.get(2).is_some() {
+                ListType::Unordered
+            } else {
+                ListType::Ordered
+            };
+
+            // 根据缩进调整列表层级
+            while !list_stack.is_empty() && indent < list_stack.last().unwrap().indent {
+                list_stack.pop();
+            }
+
+            if list_stack.is_empty() || indent > list_stack.last().unwrap().indent {
+                // 进入新的子列表
+                let new_indent = if list_stack.is_empty() {
+                    0
+                } else {
+                    // 新的缩进是基于正则表达式捕获的实际缩进
+                    indent
+                };
+                list_stack.push(ListContext {
+                    list_type: current_list_type,
+                    indent: new_indent,
+                    counter: 1,
+                });
+            } else {
+                // 同级列表项
+                let last = list_stack.last_mut().unwrap();
+                if last.list_type != current_list_type {
+                    // list type changed, treat as a new list
+                    list_stack.pop();
+                    list_stack.push(ListContext {
+                        list_type: current_list_type,
+                        indent,
+                        counter: 1,
+                    });
+                } else if last.list_type == ListType::Ordered {
+                    last.counter += 1;
+                }
+            }
+
+            // 构建新的格式化行
+            let current_context = list_stack.last().unwrap();
+            let prefix_indent = " ".repeat(if list_stack.len() > 1 {
+                2 * (list_stack.len() - 1)
+            } else {
+                0
+            });
+
+            let new_line = match current_context.list_type {
+                ListType::Unordered => format!("{}- {}", prefix_indent, content),
+                ListType::Ordered => {
+                    format!("{}{}. {}", prefix_indent, current_context.counter, content)
+                }
+            };
+            result.push(new_line);
+        } else {
+            // 非列表行，清空列表状态
+            list_stack.clear();
+            result.push(line.clone());
+        }
+    }
+
+    result
 }
 
 lazy_static! {
@@ -308,5 +409,94 @@ after text
             fmt_md,
             "`start` ignored `by` your `.gitignore` / `.ignore` / `.rgignore` files `end`\n"
         );
+    }
+
+    #[test]
+    fn test_format_lists() {
+        // Test case 1: Unordered list with mixed markers
+        let input1 = "* item 1
++ item 2
+- item 3";
+        let expected1 = "- item 1
+- item 2
+- item 3
+";
+        assert_eq!(format_markdown(input1), expected1);
+
+        // Test case 2: Ordered list with incorrect numbering
+        let input2 = "1. item 1
+3. item 2
+2. item 3";
+        let expected2 = "1. item 1
+2. item 2
+3. item 3
+";
+        assert_eq!(format_markdown(input2), expected2);
+
+        // Test case 3: Nested unordered list
+        let input3 = "* level 1
+  + level 2
+    - level 3";
+        let expected3 = "- level 1
+  - level 2
+    - level 3
+";
+        assert_eq!(format_markdown(input3), expected3);
+
+        // Test case 4: Nested ordered list
+        let input4 = "1. level 1
+   2. level 2
+      3. level 3";
+        let expected4 = "1. level 1
+  1. level 2
+    1. level 3
+";
+        assert_eq!(format_markdown(input4), expected4);
+
+        // Test case 5: Mixed nested list
+        let input5 = "* level 1
+  1. sub 1
+  2. sub 2
+* level 1";
+        let expected5 = "- level 1
+  1. sub 1
+  2. sub 2
+- level 1
+";
+        assert_eq!(format_markdown(input5), expected5);
+
+        // Test case 6: List with intermittent text
+        let input6 = "1. item 1
+
+not a list
+
+2. item 2";
+        let expected6 = "1. item 1
+
+not a list
+
+1. item 2
+";
+        assert_eq!(format_markdown(input6), expected6);
+
+        // Test case 7: Deeply nested list
+        let input7 = "1. L1
+    * L2
+        3. L3
+            + L4";
+        let expected7 = "1. L1
+  - L2
+    1. L3
+      - L4
+";
+        assert_eq!(format_markdown(input7), expected7);
+
+        // Test case 8: List with extra spacing
+        let input8 = "*   item 1
+1.    item 2";
+        let expected8 = "- item 1
+1. item 2
+";
+        assert_eq!(format_markdown(input8), expected8);
     }
 }

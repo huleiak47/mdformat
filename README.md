@@ -9,6 +9,7 @@ A command-line tool for formatting markdown text with consistent empty lines and
 - Add blank lines before table/code block
 - Remove extra blank lines
 - Align table columns
+- Format ordered and unordered lists
 
 ## Installation
 
