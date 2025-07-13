@@ -1,6 +1,6 @@
 [package]
 name = "mdformat"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 authors = ["James Hu <huleiak47@gmail.com>"]
 license = "MIT"
@@ -11,10 +11,10 @@ rust-version = "1.85"
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { version = "4.5.31", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 lazy_static = "1.5"
 unicode-script = "0.5"
-fancy-regex = "0.14"
+fancy-regex = "0.15"
 markdown-table-formatter = "0.3"
 anyhow = "1.0"
 log = "0.4"
