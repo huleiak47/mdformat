@@ -195,7 +195,7 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                 if prev_line_state != LineState::List && prev_line_state != LineState::Empty {
                     ret.push(String::new());
                 }
-                ret.push(line.to_string());
+                ret.push(format_line(line));
             }
         }
 
@@ -389,6 +389,24 @@ mod tests {
         assert_eq!(
             fmt_md,
             "# 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+        );
+
+        let fmt_md = format_markdown("123你好2谢谢hello`你好call function()`$text谢谢$谢谢");
+        assert_eq!(
+            fmt_md,
+            "123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+        );
+
+        let fmt_md = format_markdown("- 123你好2谢谢hello`你好call function()`$text谢谢$谢谢");
+        assert_eq!(
+            fmt_md,
+            "- 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+        );
+
+        let fmt_md = format_markdown("1. 123你好2谢谢hello`你好call function()`$text谢谢$谢谢");
+        assert_eq!(
+            fmt_md,
+            "1. 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
         );
     }
 
