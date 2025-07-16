@@ -90,6 +90,7 @@ enum LineState {
     Empty,
     Title,
     List,
+    Blockquote,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -126,6 +127,9 @@ fn get_line_state(line: &str, prev_state: LineState) -> LineState {
     if line.starts_with('#') {
         return LineState::Title;
     }
+    if line.starts_with('>') {
+        return LineState::Blockquote;
+    }
     if line.starts_with('|') {
         return LineState::Table;
     }
@@ -143,8 +147,11 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
 
         match cur_state {
             LineState::Normal => {
-                // must be an empty line after a table or code block
-                if prev_line_state == LineState::Table || prev_line_state == LineState::CodeEnd {
+                // must be an empty line after a table, code block or blockquote
+                if prev_line_state == LineState::Table
+                    || prev_line_state == LineState::CodeEnd
+                    || prev_line_state == LineState::Blockquote
+                {
                     ret.push(String::new());
                 }
 
@@ -157,6 +164,13 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                     ret.push(String::new());
                 }
                 ret.push(line.to_string());
+            }
+            LineState::Blockquote => {
+                // Must be an empty line before a blockquote
+                if prev_line_state != LineState::Empty && prev_line_state != LineState::Blockquote {
+                    ret.push(String::new());
+                }
+                ret.push(format_line(line));
             }
             LineState::Code | LineState::CodeEnd => {
                 ret.push(line.to_string());
@@ -181,6 +195,7 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
                 if prev_line_state == LineState::Table
                     || prev_line_state == LineState::CodeEnd
                     || prev_line_state == LineState::List
+                    || prev_line_state == LineState::Blockquote
                 {
                     ret.push(String::new());
                 }
@@ -558,5 +573,36 @@ not a list
 - List item 2
 ";
         assert_eq!(format_markdown(input10), expected10);
+    }
+
+    #[test]
+    fn test_blockquote() {
+        let input = "text before\n> quote 1\n> quote 2\ntext after";
+        let expected = "text before\n\n> quote 1\n> quote 2\n\ntext after\n";
+        assert_eq!(format_markdown(input), expected);
+
+        let input2 = "> quote\n# title";
+        let expected2 = "> quote\n\n# title\n";
+        assert_eq!(format_markdown(input2), expected2);
+
+        // list before quote
+        let input3 = "- list item\n> quote";
+        let expected3 = "- list item\n\n> quote\n";
+        assert_eq!(format_markdown(input3), expected3);
+
+        // quote before list
+        let input4 = "> quote\n- list item";
+        let expected4 = "> quote\n\n- list item\n";
+        assert_eq!(format_markdown(input4), expected4);
+
+        // code block before quote
+        let input5 = "```\ncode\n```\n> quote";
+        let expected5 = "```\ncode\n```\n\n> quote\n";
+        assert_eq!(format_markdown(input5), expected5);
+
+        // quote before code block
+        let input6 = "> quote\n```\ncode\n```";
+        let expected6 = "> quote\n\n```\ncode\n```\n";
+        assert_eq!(format_markdown(input6), expected6);
     }
 }
