@@ -310,9 +310,15 @@ fn format_lists(lines: &[String]) -> Vec<String> {
             };
             result.push(new_line);
         } else {
-            // Non-list line, clear list state
-            list_stack.clear();
-            result.push(line.clone());
+            // Non-list line
+            if line.is_empty() {
+                // Empty line: might be a separator within the same list, keep list_stack
+                result.push(line.clone());
+            } else {
+                // Real non-list content (text, heading, code, etc.): end the list
+                list_stack.clear();
+                result.push(line.clone());
+            }
         }
     }
 
@@ -573,6 +579,95 @@ not a list
 - List item 2
 ";
         assert_eq!(format_markdown(input10), expected10);
+
+        // Test case 11: Ordered list with single empty line between items
+        let input11 = "1. aaa
+
+1. bbb
+
+1. ccc";
+        let expected11 = "1. aaa
+
+2. bbb
+
+3. ccc
+";
+        assert_eq!(format_markdown(input11), expected11);
+
+        // Test case 12: Ordered list with multiple empty lines (will be merged by format_lines)
+        let input12 = "1. first
+
+
+1. second";
+        let expected12 = "1. first
+
+2. second
+";
+        assert_eq!(format_markdown(input12), expected12);
+
+        // Test case 13: Unordered list with empty lines (should not be affected)
+        let input13 = "- first
+
+- second
+
+- third";
+        let expected13 = "- first
+
+- second
+
+- third
+";
+        assert_eq!(format_markdown(input13), expected13);
+
+        // Test case 14: Nested ordered list with empty lines
+        let input14 = "1. level 1
+
+  1. level 2
+
+  1. level 2 item 2
+
+1. level 1 item 2";
+        let expected14 = "1. level 1
+
+  1. level 2
+
+  2. level 2 item 2
+
+2. level 1 item 2
+";
+        assert_eq!(format_markdown(input14), expected14);
+
+        // Test case 15: Ordered list with nested unordered list and empty lines
+        let input15 = "1. ordered 1
+
+  - unordered sub
+
+  - unordered sub 2
+
+1. ordered 2";
+        let expected15 = "1. ordered 1
+
+  - unordered sub
+
+  - unordered sub 2
+
+2. ordered 2
+";
+        assert_eq!(format_markdown(input15), expected15);
+
+        // Test case 16: Ordered list + real text + ordered list (should reset numbering)
+        let input16 = "1. first
+
+Some paragraph text.
+
+1. second";
+        let expected16 = "1. first
+
+Some paragraph text.
+
+1. second
+";
+        assert_eq!(format_markdown(input16), expected16);
     }
 
     #[test]
