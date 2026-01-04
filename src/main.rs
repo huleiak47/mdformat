@@ -139,6 +139,7 @@ fn get_line_state(line: &str, prev_state: LineState) -> LineState {
 fn format_lines(lines: Vec<&str>) -> Vec<String> {
     let mut ret = vec![];
     let mut prev_line_state = LineState::Empty;
+    let mut prev_line = "";
 
     for line in lines.iter() {
         // insert space between CJK and ASCII
@@ -208,13 +209,17 @@ fn format_lines(lines: Vec<&str>) -> Vec<String> {
             }
             LineState::List => {
                 if prev_line_state != LineState::List && prev_line_state != LineState::Empty {
-                    ret.push(String::new());
+                    // Don't add blank line if previous line is indented content (part of list)
+                    if !(prev_line_state == LineState::Normal && prev_line.starts_with(' ')) {
+                        ret.push(String::new());
+                    }
                 }
                 ret.push(format_line(line));
             }
         }
 
         prev_line_state = cur_state;
+        prev_line = line;
     }
     ret
 }
@@ -313,6 +318,10 @@ fn format_lists(lines: &[String]) -> Vec<String> {
             // Non-list line
             if line.is_empty() {
                 // Empty line: might be a separator within the same list, keep list_stack
+                result.push(line.clone());
+            } else if line.starts_with(' ') || line.starts_with('\t') {
+                // Indented content: part of the list item (code blocks, continued text, etc.)
+                // Keep list_stack intact
                 result.push(line.clone());
             } else {
                 // Real non-list content (text, heading, code, etc.): end the list
@@ -699,5 +708,33 @@ Some paragraph text.
         let input6 = "> quote\n```\ncode\n```";
         let expected6 = "> quote\n\n```\ncode\n```\n";
         assert_eq!(format_markdown(input6), expected6);
+    }
+
+    #[test]
+    fn test_ordered_list_with_indented_code_block() {
+        // Test case 1: Basic scenario - ordered list with indented code block
+        let input1 = "1. aaa\n  ```c\n  int a = 0;\n  ```\n\n\n2. bbb\n\n3. ccc";
+        let expected1 = "1. aaa\n  ```c\n  int a = 0;\n  ```\n\n2. bbb\n\n3. ccc\n";
+        assert_eq!(format_markdown(input1), expected1);
+
+        // Test case 2: Ordered list with indented text
+        let input2 = "1. first item\n  continued text\n  more text\n\n2. second item";
+        let expected2 = "1. first item\n  continued text\n  more text\n\n2. second item\n";
+        assert_eq!(format_markdown(input2), expected2);
+
+        // Test case 3: Ordered list with multiple indented elements
+        let input3 = "1. item one\n  ```\n  code\n  ```\n  continued text\n\n2. item two";
+        let expected3 = "1. item one\n  ```\n  code\n  ```\n  continued text\n\n2. item two\n";
+        assert_eq!(format_markdown(input3), expected3);
+
+        // Test case 4: Nested list with indented code block
+        let input4 = "1. outer\n  1. inner\n    ```\n    code\n    ```\n  2. inner two\n2. outer two";
+        let expected4 = "1. outer\n  1. inner\n    ```\n    code\n    ```\n  2. inner two\n2. outer two\n";
+        assert_eq!(format_markdown(input4), expected4);
+
+        // Test case 5: Ordered list with indented code block followed by unindented text (should reset)
+        let input5 = "1. first\n  ```\n  code\n  ```\n\nNormal text here\n\n1. new list";
+        let expected5 = "1. first\n  ```\n  code\n  ```\n\nNormal text here\n\n1. new list\n";
+        assert_eq!(format_markdown(input5), expected5);
     }
 }

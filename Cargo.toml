@@ -1,6 +1,6 @@
 [package]
 name = "mdformat"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 authors = ["James Hu <huleiak47@gmail.com>"]
 license = "MIT"
@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 clap = { version = "4.5", features = ["derive"] }
 lazy_static = "1.5"
 unicode-script = "0.5"
-fancy-regex = "0.15"
+fancy-regex = "0.17"
 markdown-table-formatter = "0.3"
 anyhow = "1.0"
 log = "0.4"
@@ -25,6 +25,6 @@ env_logger = "0.11"
 strip = true
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.1"
 predicates = "3.1"
-tempfile = "3.10"
+tempfile = "3.24"
