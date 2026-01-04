@@ -1,1 +1,5 @@
 /target
+.*
+*.zip
+*.tgz
+*.md
