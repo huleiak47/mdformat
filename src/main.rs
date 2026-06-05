@@ -750,11 +750,33 @@ fn format_line(line: &str, config: &SpacingOptions) -> String {
 fn format_text(text: &str, config: &SpacingOptions) -> String {
     let mut text = text.to_string();
 
+    // Phase 1: Protect inline code spans so CJK-ASCII spacing skips their content.
+    // We replace each code span with a unique placeholder, then restore them
+    // before the code-span-surrounding spacing pass runs.
+    let re_code = Regex::new(r"`[^`]+`").unwrap();
+    let mut codes: Vec<(usize, String)> = Vec::new();
+    for m in re_code.find_iter(&text) {
+        let m = m.unwrap();
+        codes.push((m.start(), m.as_str().to_string()));
+    }
+    // Replace from right to left so earlier positions stay valid
+    codes.sort_by(|a, b| b.0.cmp(&a.0));
+    for (i, (pos, code)) in codes.iter().enumerate() {
+        let placeholder = format!("\x00MDCODE{}\x00", i);
+        text.replace_range(*pos..*pos + code.len(), &placeholder);
+    }
+
     // CJK-ASCII spacing (based on config)
     if config.cjk_ascii {
         text = add_spaces_between_cjk_ascii(&text);
         // sometimes we need to perform this twice to make it stable
         text = add_spaces_between_cjk_ascii(&text);
+    }
+
+    // Phase 2: Restore inline code spans so the code-span-surrounding pass
+    // can see the backticks and add spaces around them.
+    for (i, (_, code)) in codes.iter().enumerate().rev() {
+        text = text.replace(&format!("\x00MDCODE{}\x00", i), code.as_str());
     }
 
     // Spacing around code spans (based on config)
@@ -965,25 +987,25 @@ mod tests {
         let fmt_md = format_markdown("# 123你好2谢谢hello`你好call function()`$text谢谢$谢谢", &MdFormatConfig::default());
         assert_eq!(
             fmt_md,
-            "# 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+            "# 123 你好 2 谢谢 hello `你好call function()` $text 谢谢$谢谢\n"
         );
 
         let fmt_md = format_markdown("123你好2谢谢hello`你好call function()`$text谢谢$谢谢", &MdFormatConfig::default());
         assert_eq!(
             fmt_md,
-            "123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+            "123 你好 2 谢谢 hello `你好call function()` $text 谢谢$谢谢\n"
         );
 
         let fmt_md = format_markdown("- 123你好2谢谢hello`你好call function()`$text谢谢$谢谢", &MdFormatConfig::default());
         assert_eq!(
             fmt_md,
-            "- 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+            "- 123 你好 2 谢谢 hello `你好call function()` $text 谢谢$谢谢\n"
         );
 
         let fmt_md = format_markdown("1. 123你好2谢谢hello`你好call function()`$text谢谢$谢谢", &MdFormatConfig::default());
         assert_eq!(
             fmt_md,
-            "1. 123 你好 2 谢谢 hello `你好 call function()` $text 谢谢$谢谢\n"
+            "1. 123 你好 2 谢谢 hello `你好call function()` $text 谢谢$谢谢\n"
         );
     }
 
@@ -1023,6 +1045,52 @@ after text
         assert_eq!(
             fmt_md,
             "`start` ignored `by` your `.gitignore` / `.ignore` / `.rgignore` files `end`\n"
+        );
+    }
+
+    #[test]
+    fn test_code_span_preserve_internal_content() {
+        // 行内代码块内容不应被 CJK-ASCII 间距处理修改
+        // 例如 `abc你好` 中的内容应该原样保留
+
+        // 场景1: 代码块中 CJK+ASCII 相邻，不应插入空格
+        let input1 = "请看 `abc你好` 这个文件";
+        let output1 = format_markdown(input1, &MdFormatConfig::default());
+        assert_eq!(output1, "请看 `abc你好` 这个文件\n");
+
+        // 场景2: 文件名场景，不应被修改
+        let input2 = "编辑 `src/main.rs` 文件";
+        let output2 = format_markdown(input2, &MdFormatConfig::default());
+        assert_eq!(output2, "编辑 `src/main.rs` 文件\n");
+
+        // 场景3: 命令行参数场景
+        let input3 = r#"运行 `git commit -m "修复"` 命令"#;
+        let output3 = format_markdown(input3, &MdFormatConfig::default());
+        assert_eq!(output3, r#"运行 `git commit -m "修复"` 命令
+"#);
+
+        // 场景4: 多个代码块在同一行
+        let input4 = "对比 `a你` 和 `b好` 两个文件";
+        let output4 = format_markdown(input4, &MdFormatConfig::default());
+        assert_eq!(output4, "对比 `a你` 和 `b好` 两个文件\n");
+
+        // 场景5: 代码块内纯 ASCII 不变
+        let input5 = "用 `cargo build` 编译";
+        let output5 = format_markdown(input5, &MdFormatConfig::default());
+        assert_eq!(output5, "用 `cargo build` 编译\n");
+    }
+
+    #[test]
+    fn test_code_span_only_affects_surrounding_spacing() {
+        // 代码块外部的 CJK-ASCII 间距正常处理，代码块内部不受影响
+
+        let input = "你好`code`世界 `inner你好` outer你好outer `你好inner` hello世界";
+        let output = format_markdown(input, &MdFormatConfig::default());
+        // 代码块外部: "你好" 和 world 之间(无直接相邻), "outer" 和 "你好" 之间有空格,
+        // "你好" 和 "hello" 之间有空格, "inner你好" 保持不变
+        assert_eq!(
+            output,
+            "你好 `code` 世界 `inner你好` outer 你好 outer `你好inner` hello 世界\n"
         );
     }
 
